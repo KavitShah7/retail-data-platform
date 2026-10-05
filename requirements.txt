@@ -5,6 +5,8 @@ Faker==40.39.0
 jmespath==1.1.0
 psycopg==3.3.6
 psycopg-binary==3.3.6
+py4j==0.10.9.9
+pyspark==4.2.0
 python-dateutil==2.9.0.post0
 s3transfer==0.19.2
 six==1.17.0
