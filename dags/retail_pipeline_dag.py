@@ -17,15 +17,13 @@ PROJECT_ROOT = Path(
     "/Users/kavitshah/Documents/Python/retail-data-platform"
 )
 
-# Use the main project environment for Spark/boto3 scripts,
-# not the Airflow virtual environment.
 PROJECT_PYTHON = PROJECT_ROOT / ".venv/bin/python"
 
 RETAIL_BUCKET = "retail-data-platform-kavit-2026"
 
 
 # --------------------------------------------------
-# AIRFLOW DEFAULT TASK SETTINGS
+# AIRFLOW DEFAULT SETTINGS
 # --------------------------------------------------
 
 default_args = {
@@ -39,11 +37,6 @@ default_args = {
 # --------------------------------------------------
 
 def run_python_script(script_name):
-    """
-    Run one of our existing project Python scripts
-    using the project's .venv.
-    """
-
     subprocess.run(
         [
             str(PROJECT_PYTHON),
@@ -55,10 +48,6 @@ def run_python_script(script_name):
 
 
 def get_s3_objects(prefix):
-    """
-    Return the S3 objects underneath a prefix.
-    """
-
     result = subprocess.run(
         [
             "aws",
@@ -82,7 +71,7 @@ def get_s3_objects(prefix):
 
 
 # --------------------------------------------------
-# DAG DEFINITION
+# DAG
 # --------------------------------------------------
 
 @dag(
@@ -100,9 +89,9 @@ def get_s3_objects(prefix):
 )
 def retail_pipeline():
 
-    # ----------------------------------------------
-    # TASK 1: GENERATE RAW DATA
-    # ----------------------------------------------
+    # --------------------------------------------------
+    # TASK 1: GENERATE DATA
+    # --------------------------------------------------
 
     @task
     def generate_data():
@@ -117,14 +106,13 @@ def retail_pipeline():
 
         for script in scripts:
             print(f"Running {script}")
-
             run_python_script(script)
 
         print("All raw datasets generated successfully.")
 
-    # ----------------------------------------------
-    # TASK 2: UPLOAD RAW CSV FILES TO S3
-    # ----------------------------------------------
+    # --------------------------------------------------
+    # TASK 2: UPLOAD RAW DATA TO S3
+    # --------------------------------------------------
 
     @task
     def upload_raw_to_s3():
@@ -149,9 +137,9 @@ def retail_pipeline():
 
         print("Raw data uploaded to S3 successfully.")
 
-    # ----------------------------------------------
-    # TASK 3: RUN PYSPARK TRANSFORMATIONS
-    # ----------------------------------------------
+    # --------------------------------------------------
+    # TASK 3: RUN SPARK PIPELINE
+    # --------------------------------------------------
 
     @task
     def run_spark_pipeline():
@@ -160,11 +148,11 @@ def retail_pipeline():
             "retail_spark_pipeline.py"
         )
 
-        print("Spark transformation completed.")
+        print("Spark pipeline completed successfully.")
 
-    # ----------------------------------------------
-    # TASK 4: UPLOAD PROCESSED PARQUET TO S3
-    # ----------------------------------------------
+    # --------------------------------------------------
+    # TASK 4: UPLOAD PROCESSED PARQUET
+    # --------------------------------------------------
 
     @task
     def upload_processed_to_s3():
@@ -176,19 +164,19 @@ def retail_pipeline():
 
         for dataset in processed_datasets:
 
-            s3_destination = (
-                f"s3://{RETAIL_BUCKET}"
-                f"/processed/{dataset}/"
-            )
-
             local_source = (
                 PROJECT_ROOT
                 / "processed"
                 / dataset
             )
 
+            s3_destination = (
+                f"s3://{RETAIL_BUCKET}"
+                f"/processed/{dataset}/"
+            )
+
             print(
-                f"Removing previous S3 data: "
+                f"Removing old S3 data from "
                 f"{s3_destination}"
             )
 
@@ -204,7 +192,7 @@ def retail_pipeline():
             )
 
             print(
-                f"Uploading new Parquet data "
+                f"Uploading new Parquet files "
                 f"for {dataset}"
             )
 
@@ -225,20 +213,16 @@ def retail_pipeline():
             )
 
         print(
-            "Processed Parquet data uploaded "
-            "successfully."
+            "Processed Parquet data uploaded successfully."
         )
 
-    # ----------------------------------------------
-    # TASK 5: VALIDATE PIPELINE OUTPUT
-    # ----------------------------------------------
+    # --------------------------------------------------
+    # TASK 5A: VALIDATE RAW DATA
+    # --------------------------------------------------
 
     @task
-    def validate_pipeline():
+    def validate_raw_data():
 
-        print("Starting pipeline validation...")
-
-        # Expected raw S3 files
         expected_raw_files = [
             "raw/customers/customers.csv",
             "raw/products/products.csv",
@@ -247,10 +231,12 @@ def retail_pipeline():
             "raw/payments/payments.csv",
         ]
 
-        # Check every raw file exists.
         for key in expected_raw_files:
 
-            print(f"Checking s3://{RETAIL_BUCKET}/{key}")
+            print(
+                f"Checking "
+                f"s3://{RETAIL_BUCKET}/{key}"
+            )
 
             subprocess.run(
                 [
@@ -267,71 +253,120 @@ def retail_pipeline():
                 text=True,
             )
 
-        print("All raw files exist.")
+        print("Raw data validation passed!")
 
-        # Validate processed orders
-        order_objects = get_s3_objects(
+    # --------------------------------------------------
+    # TASK 5B: VALIDATE PROCESSED ORDERS
+    # --------------------------------------------------
+
+    @task
+    def validate_orders():
+
+        objects = get_s3_objects(
             "processed/orders/"
         )
 
-        order_parquet_files = [
+        parquet_files = [
             obj["Key"]
-            for obj in order_objects
+            for obj in objects
             if obj["Key"].endswith(".parquet")
         ]
 
-        if not order_parquet_files:
+        if not parquet_files:
             raise ValueError(
-                "Validation failed: "
-                "No processed orders Parquet "
-                "files found."
+                "No processed orders "
+                "Parquet files found."
             )
 
         print(
-            f"Processed orders validation passed: "
-            f"{len(order_parquet_files)} "
+            f"Orders validation passed: "
+            f"{len(parquet_files)} "
             f"Parquet file(s)"
         )
 
-        # Validate processed customer summary
-        customer_objects = get_s3_objects(
+    # --------------------------------------------------
+    # TASK 5C: VALIDATE CUSTOMER SUMMARY
+    # --------------------------------------------------
+
+    @task
+    def validate_customer_summary():
+
+        objects = get_s3_objects(
             "processed/customer_summary/"
         )
 
-        customer_parquet_files = [
+        parquet_files = [
             obj["Key"]
-            for obj in customer_objects
+            for obj in objects
             if obj["Key"].endswith(".parquet")
         ]
 
-        if not customer_parquet_files:
+        if not parquet_files:
             raise ValueError(
-                "Validation failed: "
-                "No customer summary Parquet "
-                "files found."
+                "No customer summary "
+                "Parquet files found."
             )
 
         print(
             f"Customer summary validation passed: "
-            f"{len(customer_parquet_files)} "
+            f"{len(parquet_files)} "
             f"Parquet file(s)"
         )
 
+    # --------------------------------------------------
+    # FINAL TASK
+    # --------------------------------------------------
+
+    @task
+    def pipeline_complete():
+
         print(
-            "PIPELINE VALIDATION SUCCESSFUL!"
+            "Retail data pipeline "
+            "completed successfully!"
         )
+
+    # --------------------------------------------------
+    # CREATE TASK INSTANCES
+    # --------------------------------------------------
+
+    generate_task = generate_data()
+
+    upload_raw_task = upload_raw_to_s3()
+
+    spark_task = run_spark_pipeline()
+
+    upload_processed_task = upload_processed_to_s3()
+
+    validate_raw_task = validate_raw_data()
+
+    validate_orders_task = validate_orders()
+
+    validate_customer_task = validate_customer_summary()
+
+    complete_task = pipeline_complete()
 
     # --------------------------------------------------
     # TASK DEPENDENCIES
     # --------------------------------------------------
 
     (
-        generate_data()
-        >> upload_raw_to_s3()
-        >> run_spark_pipeline()
-        >> upload_processed_to_s3()
-        >> validate_pipeline()
+        generate_task
+        >> upload_raw_task
+        >> spark_task
+        >> upload_processed_task
     )
+
+    upload_processed_task >> [
+        validate_raw_task,
+        validate_orders_task,
+        validate_customer_task,
+    ]
+
+    [
+        validate_raw_task,
+        validate_orders_task,
+        validate_customer_task,
+    ] >> complete_task
 
 
 retail_pipeline()
