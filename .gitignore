@@ -13,3 +13,7 @@ __pycache__/
 
 # Generated Spark output
 processed/
+
+
+.airflow-venv/
+airflow/
