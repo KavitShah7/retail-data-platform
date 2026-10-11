@@ -17,3 +17,5 @@ processed/
 
 .airflow-venv/
 airflow/
+
+.dbt-venv/

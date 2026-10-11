@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: processed
+    database: RETAIL_DB
+    schema: PROCESSED
+
+    tables:
+      - name: orders
+        identifier: ORDERS
+
+      - name: customer_summary
+        identifier: CUSTOMER_SUMMARY
