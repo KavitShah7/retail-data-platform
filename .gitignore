@@ -19,3 +19,6 @@ processed/
 airflow/
 
 .dbt-venv/
+
+streaming/
+delta/
