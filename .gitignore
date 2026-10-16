@@ -22,3 +22,5 @@ airflow/
 
 streaming/
 delta/
+
+docker-output/

@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import time
 from datetime import datetime, timezone
@@ -9,9 +10,11 @@ from confluent_kafka import Producer
 TOPIC = "retail_orders"
 
 producer = Producer({
-    "bootstrap.servers": "localhost:9092"
+    "bootstrap.servers": os.getenv(
+        "KAFKA_BOOTSTRAP_SERVERS",
+        "localhost:9092"
+    )
 })
-
 
 def delivery_report(err, msg):
     if err is not None:

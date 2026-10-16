@@ -1,0 +1,14 @@
+services:
+  customer-generator:
+    build: .
+    image: retail-customer-generator
+    volumes:
+      - ./docker-output:/app/data
+
+  kafka-producer:
+    build:
+      context: .
+      dockerfile: Dockerfile.kafka
+    image: retail-kafka-producer
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: host.docker.internal:9094

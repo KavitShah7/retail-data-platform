@@ -1,0 +1,29 @@
+# Python virtual environments
+.venv/
+.airflow-venv/
+.dbt-venv/
+
+# Git
+.git/
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Generated and local data
+data/
+processed/
+streaming/
+delta/
+docker-output/
+
+# Local configuration and secrets
+.env
+.env.*
+*.pem
+*.p8
+*.key
+
+# Logs
+*.log
