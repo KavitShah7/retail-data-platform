@@ -24,3 +24,21 @@ streaming/
 delta/
 
 docker-output/
+
+# Terraform local files
+**/.terraform/
+
+# Terraform state
+*.tfstate
+*.tfstate.*
+
+# Terraform variable files
+*.tfvars
+*.tfvars.json
+
+# Terraform crash logs
+crash.log
+crash.*.log
+
+# Terraform plan files
+*.tfplan
