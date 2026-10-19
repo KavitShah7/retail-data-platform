@@ -1,6 +1,8 @@
+
 import json
 import os
 import subprocess
+
 from datetime import timedelta
 from pathlib import Path
 
@@ -9,22 +11,31 @@ import pendulum
 from airflow.sdk import dag, task
 
 
-# --------------------------------------------------
-# PROJECT CONFIGURATION
-# --------------------------------------------------
+# ==================================================
+# 1. PROJECT CONFIGURATION
+# ==================================================
 
 PROJECT_ROOT = Path(
     "/Users/kavitshah/Documents/Python/retail-data-platform"
 )
 
+# Python environment for data generation and Spark
 PROJECT_PYTHON = PROJECT_ROOT / ".venv/bin/python"
 
+# Python environment for Snowflake connector
+AIRFLOW_PYTHON = PROJECT_ROOT / ".airflow-venv/bin/python"
+
+# dbt configuration
+DBT_EXECUTABLE = PROJECT_ROOT / ".dbt-venv/bin/dbt"
+DBT_PROJECT = PROJECT_ROOT / "retail_dbt"
+
+# S3 configuration
 RETAIL_BUCKET = "retail-data-platform-kavit-2026"
 
 
-# --------------------------------------------------
-# AIRFLOW DEFAULT SETTINGS
-# --------------------------------------------------
+# ==================================================
+# 2. AIRFLOW SETTINGS
+# ==================================================
 
 default_args = {
     "retries": 2,
@@ -32,15 +43,22 @@ default_args = {
 }
 
 
-# --------------------------------------------------
-# HELPER FUNCTIONS
-# --------------------------------------------------
+# ==================================================
+# 3. HELPER FUNCTIONS
+# ==================================================
 
 def run_python_script(script_name):
+    """
+    Execute a Python script using the project's
+    main virtual environment.
+    """
+
+    script_path = PROJECT_ROOT / "python" / script_name
+
     subprocess.run(
         [
             str(PROJECT_PYTHON),
-            str(PROJECT_ROOT / "python" / script_name),
+            str(script_path),
         ],
         cwd=PROJECT_ROOT,
         check=True,
@@ -48,6 +66,10 @@ def run_python_script(script_name):
 
 
 def get_s3_objects(prefix):
+    """
+    Return objects found under an S3 prefix.
+    """
+
     result = subprocess.run(
         [
             "aws",
@@ -70,18 +92,15 @@ def get_s3_objects(prefix):
     return response.get("Contents", [])
 
 
-# --------------------------------------------------
-# DAG
-# --------------------------------------------------
+# ==================================================
+# 4. AIRFLOW DAG
+# ==================================================
 
 @dag(
     dag_id="retail_data_pipeline",
     schedule=None,
     start_date=pendulum.datetime(
-        2026,
-        1,
-        1,
-        tz="UTC",
+        2026, 1, 1, tz="UTC"
     ),
     catchup=False,
     default_args=default_args,
@@ -89,9 +108,9 @@ def get_s3_objects(prefix):
 )
 def retail_pipeline():
 
-    # --------------------------------------------------
-    # TASK 1: GENERATE DATA
-    # --------------------------------------------------
+    # ----------------------------------------------
+    # TASK 1: GENERATE SYNTHETIC DATA
+    # ----------------------------------------------
 
     @task
     def generate_data():
@@ -105,41 +124,44 @@ def retail_pipeline():
         ]
 
         for script in scripts:
-            print(f"Running {script}")
+
+            print(f"Generating data: {script}")
+
             run_python_script(script)
 
-        print("All raw datasets generated successfully.")
+        print("All datasets generated successfully.")
 
-    # --------------------------------------------------
-    # TASK 2: UPLOAD RAW DATA TO S3
-    # --------------------------------------------------
+
+    # ----------------------------------------------
+    # TASK 2: UPLOAD RAW CSV FILES TO S3
+    # ----------------------------------------------
 
     @task
     def upload_raw_to_s3():
 
         env = os.environ.copy()
-
         env["RETAIL_BUCKET"] = RETAIL_BUCKET
+
+        script_path = (
+            PROJECT_ROOT / "python" / "upload_to_s3.py"
+        )
 
         subprocess.run(
             [
                 str(PROJECT_PYTHON),
-                str(
-                    PROJECT_ROOT
-                    / "python"
-                    / "upload_to_s3.py"
-                ),
+                str(script_path),
             ],
             cwd=PROJECT_ROOT,
             env=env,
             check=True,
         )
 
-        print("Raw data uploaded to S3 successfully.")
+        print("Raw CSV files uploaded to S3.")
 
-    # --------------------------------------------------
-    # TASK 3: RUN SPARK PIPELINE
-    # --------------------------------------------------
+
+    # ----------------------------------------------
+    # TASK 3: EXECUTE PYSPARK TRANSFORMATIONS
+    # ----------------------------------------------
 
     @task
     def run_spark_pipeline():
@@ -148,26 +170,57 @@ def retail_pipeline():
             "retail_spark_pipeline.py"
         )
 
-        print("Spark pipeline completed successfully.")
+        print("PySpark transformations completed.")
 
-    # --------------------------------------------------
-    # TASK 4: UPLOAD PROCESSED PARQUET
-    # --------------------------------------------------
+
+    # ----------------------------------------------
+    # TASK 4: UPLOAD PROCESSED PARQUET TO S3
+    # ----------------------------------------------
 
     @task
     def upload_processed_to_s3():
 
-        processed_datasets = [
+        datasets = [
             "orders",
             "customer_summary",
         ]
 
-        for dataset in processed_datasets:
+        # Validate both local datasets before
+        # modifying anything in S3.
+
+        for dataset in datasets:
 
             local_source = (
-                PROJECT_ROOT
-                / "processed"
-                / dataset
+                PROJECT_ROOT / "processed" / dataset
+            )
+
+            if not local_source.is_dir():
+                raise FileNotFoundError(
+                    f"Dataset directory missing: {local_source}"
+                )
+
+            parquet_files = list(
+                local_source.rglob("*.parquet")
+            )
+
+            if not parquet_files:
+                raise FileNotFoundError(
+                    f"No Parquet files found: {local_source}"
+                )
+
+            print(
+                f"{dataset}: found "
+                f"{len(parquet_files)} Parquet file(s)"
+            )
+
+        # Phase 1:
+        # Upload new Parquet files before deleting
+        # any existing objects.
+
+        for dataset in datasets:
+
+            local_source = (
+                PROJECT_ROOT / "processed" / dataset
             )
 
             s3_destination = (
@@ -175,35 +228,13 @@ def retail_pipeline():
                 f"/processed/{dataset}/"
             )
 
-            print(
-                f"Removing old S3 data from "
-                f"{s3_destination}"
-            )
-
             subprocess.run(
                 [
                     "aws",
                     "s3",
-                    "rm",
-                    s3_destination,
-                    "--recursive",
-                ],
-                check=True,
-            )
-
-            print(
-                f"Uploading new Parquet files "
-                f"for {dataset}"
-            )
-
-            subprocess.run(
-                [
-                    "aws",
-                    "s3",
-                    "cp",
+                    "sync",
                     str(local_source),
                     s3_destination,
-                    "--recursive",
                     "--exclude",
                     "*",
                     "--include",
@@ -212,18 +243,50 @@ def retail_pipeline():
                 check=True,
             )
 
-        print(
-            "Processed Parquet data uploaded successfully."
-        )
+            print(f"Uploaded {dataset} Parquet files.")
 
-    # --------------------------------------------------
-    # TASK 5A: VALIDATE RAW DATA
-    # --------------------------------------------------
+        # Phase 2:
+        # After both uploads succeed, remove old
+        # Parquet files that no longer exist locally.
+
+        for dataset in datasets:
+
+            local_source = (
+                PROJECT_ROOT / "processed" / dataset
+            )
+
+            s3_destination = (
+                f"s3://{RETAIL_BUCKET}"
+                f"/processed/{dataset}/"
+            )
+
+            subprocess.run(
+                [
+                    "aws",
+                    "s3",
+                    "sync",
+                    str(local_source),
+                    s3_destination,
+                    "--exclude",
+                    "*",
+                    "--include",
+                    "*.parquet",
+                    "--delete",
+                ],
+                check=True,
+            )
+
+        print("Processed Parquet synchronized to S3.")
+
+
+    # ----------------------------------------------
+    # TASK 5A: VALIDATE RAW DATA IN S3
+    # ----------------------------------------------
 
     @task
     def validate_raw_data():
 
-        expected_raw_files = [
+        expected_files = [
             "raw/customers/customers.csv",
             "raw/products/products.csv",
             "raw/orders/orders.csv",
@@ -231,12 +294,7 @@ def retail_pipeline():
             "raw/payments/payments.csv",
         ]
 
-        for key in expected_raw_files:
-
-            print(
-                f"Checking "
-                f"s3://{RETAIL_BUCKET}/{key}"
-            )
+        for key in expected_files:
 
             subprocess.run(
                 [
@@ -253,11 +311,14 @@ def retail_pipeline():
                 text=True,
             )
 
-        print("Raw data validation passed!")
+            print(f"Validated raw file: {key}")
 
-    # --------------------------------------------------
-    # TASK 5B: VALIDATE PROCESSED ORDERS
-    # --------------------------------------------------
+        print("Raw S3 validation passed.")
+
+
+    # ----------------------------------------------
+    # TASK 5B: VALIDATE ORDERS PARQUET
+    # ----------------------------------------------
 
     @task
     def validate_orders():
@@ -274,19 +335,18 @@ def retail_pipeline():
 
         if not parquet_files:
             raise ValueError(
-                "No processed orders "
-                "Parquet files found."
+                "No orders Parquet files found in S3."
             )
 
         print(
             f"Orders validation passed: "
-            f"{len(parquet_files)} "
-            f"Parquet file(s)"
+            f"{len(parquet_files)} Parquet file(s)."
         )
 
-    # --------------------------------------------------
-    # TASK 5C: VALIDATE CUSTOMER SUMMARY
-    # --------------------------------------------------
+
+    # ----------------------------------------------
+    # TASK 5C: VALIDATE CUSTOMER SUMMARY PARQUET
+    # ----------------------------------------------
 
     @task
     def validate_customer_summary():
@@ -303,31 +363,112 @@ def retail_pipeline():
 
         if not parquet_files:
             raise ValueError(
-                "No customer summary "
-                "Parquet files found."
+                "No customer summary Parquet files "
+                "found in S3."
             )
 
         print(
             f"Customer summary validation passed: "
-            f"{len(parquet_files)} "
-            f"Parquet file(s)"
+            f"{len(parquet_files)} Parquet file(s)."
         )
 
-    # --------------------------------------------------
-    # FINAL TASK
-    # --------------------------------------------------
+
+    # ----------------------------------------------
+    # TASK 6: LOAD DATA INTO SNOWFLAKE
+    # ----------------------------------------------
+
+    @task
+    def load_snowflake_data():
+
+        if not os.environ.get(
+            "SNOWFLAKE_KEY_PASSPHRASE"
+        ):
+            raise RuntimeError(
+                "SNOWFLAKE_KEY_PASSPHRASE is not set "
+                "in the Airflow environment."
+            )
+
+        script_path = (
+            PROJECT_ROOT / "python" / "load_snowflake.py"
+        )
+
+        subprocess.run(
+            [
+                str(AIRFLOW_PYTHON),
+                str(script_path),
+            ],
+            cwd=PROJECT_ROOT,
+            check=True,
+        )
+
+        print("Snowflake data loaded successfully.")
+
+
+    # ----------------------------------------------
+    # TASK 7: EXECUTE DBT MODELS
+    # ----------------------------------------------
+
+    @task
+    def run_dbt_models():
+
+        if not os.environ.get(
+            "SNOWFLAKE_KEY_PASSPHRASE"
+        ):
+            raise RuntimeError(
+                "Snowflake key passphrase is missing."
+            )
+
+        subprocess.run(
+            [
+                str(DBT_EXECUTABLE),
+                "run",
+                "--project-dir",
+                str(DBT_PROJECT),
+            ],
+            cwd=DBT_PROJECT,
+            check=True,
+        )
+
+        print("dbt models built successfully.")
+
+
+    # ----------------------------------------------
+    # TASK 8: EXECUTE DBT TESTS
+    # ----------------------------------------------
+
+    @task
+    def test_dbt_models():
+
+        subprocess.run(
+            [
+                str(DBT_EXECUTABLE),
+                "test",
+                "--project-dir",
+                str(DBT_PROJECT),
+            ],
+            cwd=DBT_PROJECT,
+            check=True,
+        )
+
+        print("All dbt tests passed.")
+
+
+    # ----------------------------------------------
+    # TASK 9: PIPELINE COMPLETE
+    # ----------------------------------------------
 
     @task
     def pipeline_complete():
 
-        print(
-            "Retail data pipeline "
-            "completed successfully!"
-        )
+        print("=" * 50)
+        print("RETAIL DATA PLATFORM")
+        print("END-TO-END PIPELINE COMPLETED SUCCESSFULLY")
+        print("=" * 50)
 
-    # --------------------------------------------------
-    # CREATE TASK INSTANCES
-    # --------------------------------------------------
+
+    # ==============================================
+    # 5. CREATE AIRFLOW TASK INSTANCES
+    # ==============================================
 
     generate_task = generate_data()
 
@@ -343,11 +484,20 @@ def retail_pipeline():
 
     validate_customer_task = validate_customer_summary()
 
+    snowflake_task = load_snowflake_data()
+
+    dbt_run_task = run_dbt_models()
+
+    dbt_test_task = test_dbt_models()
+
     complete_task = pipeline_complete()
 
-    # --------------------------------------------------
-    # TASK DEPENDENCIES
-    # --------------------------------------------------
+
+    # ==============================================
+    # 6. DEFINE TASK DEPENDENCIES
+    # ==============================================
+
+    # Step 1: Generate, transform and upload data
 
     (
         generate_task
@@ -356,17 +506,31 @@ def retail_pipeline():
         >> upload_processed_task
     )
 
+    # Step 2: Validate three S3 datasets in parallel
+
     upload_processed_task >> [
         validate_raw_task,
         validate_orders_task,
         validate_customer_task,
     ]
 
-    [
-        validate_raw_task,
-        validate_orders_task,
-        validate_customer_task,
-    ] >> complete_task
+    # Step 3: Load Snowflake, run dbt and test
 
+    (
+        [
+            validate_raw_task,
+            validate_orders_task,
+            validate_customer_task,
+        ]
+        >> snowflake_task
+        >> dbt_run_task
+        >> dbt_test_task
+        >> complete_task
+    )
+
+
+# ==================================================
+# 7. REGISTER THE AIRFLOW DAG
+# ==================================================
 
 retail_pipeline()
