@@ -695,3 +695,16 @@ No error output.
 - `git diff --cached --quiet` returned exit 0. No files staged; HEAD remains `80dff45`.
 - Ignore checks confirmed `.env`, a sample `.p8` key filename, and private dbt profiles are ignored. The offline dbt fixture is explicitly allowed.
 - All five original CSV hashes remain unchanged from audit start.
+
+## Follow-up: Terraform Linux checksum failure
+
+1. Read the tracked lockfile and CI workflow. The only `h1` checksum was for `darwin_arm64`; CI uses `linux_amd64` and read-only initialization.
+2. In an isolated configuration-only copy (no state or credentials), ran `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64`: exit 0. Both AWS 6.69.1 packages were signed by HashiCorp. Mac checksums already existed; Linux required an additional checksum.
+3. Reproduced the failure on Mac by removing its `h1` checksum only in a disposable copy while retaining signed ZIP hashes. `terraform init -backend=false -input=false -lockfile=readonly -no-color`: exit 0 with a lockfile-not-updated warning. `terraform validate -no-color`: exit 1 with the exact cached-package checksum mismatch.
+4. Restored the official multi-platform lockfile into the same disposable copy. The same read-only init: exit 0 without the warning. `terraform validate -no-color`: exit 0, configuration valid. `terraform fmt -check -no-color`: exit 0.
+5. Reviewed the lock diff: exactly one Linux `h1` line added; version 6.69.1, constraints, ZIP hashes, Mac hash, and infrastructure configuration unchanged.
+6. Updated the report and README with the cause, before/after evidence, and platform-lock maintenance command. The original Mac-only audit did not cover this CI-specific gap.
+
+Terraform used an empty audit-only CLI installation configuration, a dedicated `TF_DATA_DIR`, no inherited `TF_*` or `AWS_*` settings, and no plan/apply. The isolated reproduction logs are retained in the chat workspace.
+
+Final repository check: `terraform fmt -check` and `terraform validate -no-color` both exited 0 after applying the fix. Terraform reported: `Success! The configuration is valid.`

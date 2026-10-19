@@ -386,6 +386,17 @@ audit environment ran all 24 tests. `dbt parse` checks structure and references,
 not SQL execution or actual data tests. Terraform init may download providers;
 these validation commands do not run a plan or apply.
 
+After intentionally updating a provider version, record checksums for both the
+Linux CI runner and Apple Silicon development machines before committing:
+
+```bash
+terraform -chdir=terraform providers lock -platform=linux_amd64 -platform=darwin_arm64
+```
+
+This verifies packages from their origin and records platform hashes. Commit
+the reviewed `.terraform.lock.hcl` change; CI keeps its lockfile read-only.
+
+
 With Docker running, `docker compose run --rm customer-generator` writes only
 local synthetic output. `docker compose up` also starts the producer and sends
 Kafka events, so it is not an offline validation command.

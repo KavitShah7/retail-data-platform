@@ -189,3 +189,33 @@ was consulted for load-result/column behavior. No SQL changes were made based
 on assumptions about unseen warehouse objects. dbt profile fields were checked
 against the installed adapter because the current online documentation also
 covers newer major versions.
+
+## Follow-up: Terraform CI checksum correction (October 19, 2026)
+
+After audit commit `e76d6ba`, GitHub Actions reached `terraform validate` but
+failed because its extracted Linux AWS provider package did not match a
+recorded lockfile hash. The original lockfile had the Mac `h1` checksum and
+signed ZIP checksums, but no Linux `h1` checksum. The audit's newly added
+`-lockfile=readonly` prevented initialization from recording that missing hash.
+The original audit checked Mac validation and missed this cross-platform case.
+
+**Change:** `terraform/.terraform.lock.hcl` gains one official Linux amd64 `h1`
+checksum. AWS provider version **6.69.1**, its version constraint, existing
+checksums, Terraform configuration, and read-only CI behavior remain unchanged.
+`README.md` now explains how to refresh both platform hashes after a deliberate
+provider update. This report and the command log record the correction.
+
+**Verification:** `terraform providers lock -platform=linux_amd64
+-platform=darwin_arm64` fetched both packages directly from the origin registry
+and verified HashiCorp signatures. In an isolated copy, removing the local
+platform's `h1` while retaining signed ZIP hashes reproduced the exact sequence:
+read-only init exited 0 with “Provider lock file not updated,” then validate
+exited 1 with the reported checksum mismatch. Restoring the official
+multi-platform lock made read-only init, validate, and formatting all pass.
+This reproduction ran on Mac; Linux package identity was verified by the lock
+command, while the next GitHub run will verify actual Linux execution.
+
+No provider upgrade, checksum bypass, cache deletion, Terraform plan/apply, AWS
+operation, or credential access was needed. The five existing CSV changes
+remain outside the fix. HashiCorp documents recording platform checksums with
+[`terraform providers lock`](https://developer.hashicorp.com/terraform/cli/commands/providers/lock).
