@@ -51,3 +51,17 @@ jobs:
 
       - name: Validate Terraform
         run: terraform validate
+
+
+  docker-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build customer generator image
+        run: docker build -t retail-customer-generator .
+
+      - name: Build Kafka producer image
+        run: docker build -f Dockerfile.kafka -t retail-kafka-producer .
