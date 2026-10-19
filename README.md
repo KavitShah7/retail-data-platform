@@ -150,7 +150,6 @@ The DAG includes task dependencies, retries, and failure handling.
 **Validation status (2026-10-19):** Local DAG imports, mocked task/loader tests,
 offline dbt parsing, Terraform validation, and a local synthetic Spark batch
 passed during the repository audit. A live end-to-end cloud run was not repeated.
-See `AUDIT_REPORT.md` for evidence and remaining limits.
 
 ## 5. Kafka Streaming and Databricks
 
