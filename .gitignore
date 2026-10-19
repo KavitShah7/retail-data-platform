@@ -58,3 +58,5 @@ crash.*.log
 .pytest_cache/
 .ruff_cache/
 airflow-audit/
+
+data/*.csv
