@@ -147,8 +147,10 @@ The pipeline runs the following tasks:
 
 The DAG includes task dependencies, retries, and failure handling.
 
-**Project status:** The complete batch pipeline has been executed
-successfully with all Airflow tasks passing.
+**Validation status (2026-10-19):** Local DAG imports, mocked task/loader tests,
+offline dbt parsing, Terraform validation, and a local synthetic Spark batch
+passed during the repository audit. A live end-to-end cloud run was not repeated.
+See `AUDIT_REPORT.md` for evidence and remaining limits.
 
 ## 5. Kafka Streaming and Databricks
 
@@ -212,10 +214,11 @@ GitHub Actions automatically performs checks for repository changes.
 
 The CI workflow includes:
 
-- Python syntax validation
-- Python unit tests
-- Terraform formatting and validation
-- Docker image builds
+- Python syntax checks, focused Ruff correctness linting, and offline unit tests
+- Airflow DAG imports, dependency graph checks, and mocked task failure checks
+- Offline dbt parsing with a nonfunctional test profile
+- Terraform formatting, backend-free initialization, and validation
+- Compose validation, Docker image builds, and a customer-generator smoke test
 
 Workflow configuration:
 
@@ -270,9 +273,35 @@ A local development environment with:
 - Snowflake access
 - dbt
 
-The current DAG uses local virtual environments and a
-machine-specific project path. These paths must be configured
-for the machine running Airflow.
+Use Python 3.11 for the tested environments and Java 17 for the local Spark
+batch. Keep Spark, Airflow, and dbt in separate virtual environments:
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+python3.11 -m venv .airflow-venv
+.airflow-venv/bin/python -m pip install -r requirements-airflow.txt
+python3.11 -m venv .dbt-venv
+.dbt-venv/bin/python -m pip install -r requirements-dbt.txt
+```
+
+The DAG defaults to the repository containing its source file and the three
+environments above. For a different worker layout, set these in every Airflow
+worker's environment before it imports the DAG:
+
+| Variable | Default / purpose |
+|---|---|
+| `RETAIL_PROJECT_ROOT` | Parent of `dags/`; override with an absolute repository path for bundled DAG deployments |
+| `RETAIL_PROJECT_PYTHON` | `<root>/.venv/bin/python` |
+| `RETAIL_SNOWFLAKE_PYTHON` | `<root>/.airflow-venv/bin/python` |
+| `RETAIL_DBT_EXECUTABLE` | `<root>/.dbt-venv/bin/dbt` |
+| `RETAIL_BUCKET` | Existing `retail-data-platform-kavit-2026` bucket; select an authorized bucket |
+| `DBT_PROFILES_DIR` | dbt's usual profile search location; use a private directory |
+
+Use absolute executable paths for overrides. `aws` must be on each worker's
+`PATH`. The DAG serializes its own runs with `max_active_runs=1` because its
+files and cloud destinations are shared; this does not coordinate other DAGs,
+manual scripts, or deployments.
 
 ### Authentication
 
@@ -281,7 +310,21 @@ Before running the pipeline:
 1. Authenticate with AWS using an authorized AWS CLI session.
 2. Ensure the Snowflake service account has the required grants.
 3. Make the encrypted Snowflake private-key passphrase available
-   securely to the Airflow process.
+   securely to the Airflow process as `SNOWFLAKE_KEY_PASSPHRASE`.
+4. The loader defaults to the existing service account configuration. You can
+   override `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`,
+   `SNOWFLAKE_WAREHOUSE`, and `SNOWFLAKE_PRIVATE_KEY_FILE` (default
+   `~/.dbt/snowflake_dbt_key.p8`). The loader and source models still target
+   `RETAIL_DB.PROCESSED`; a bucket override does not repoint the Snowflake stage.
+5. Use `retail_dbt/profiles.example.yml` to configure a real private dbt profile,
+   or retain your existing working profile. Both tools must refer to the same
+   Snowflake account and data. Inject secrets through your secure environment.
+
+Snowflake prerequisites are external to this repository: warehouse and role
+grants, database/schema, `ORDERS` and `CUSTOMER_SUMMARY` destination tables,
+`RETAIL_DB.PROCESSED.RETAIL_PROCESSED_STAGE` pointing at the selected bucket's
+`processed/` prefix, and `RETAIL_DB.PROCESSED.PARQUET_FORMAT`. Validate their
+schemas and grants before a live run; the audit did not inspect those objects.
 
 Do not commit passwords, private keys, access tokens, or other
 credentials to GitHub.
@@ -309,10 +352,46 @@ Find `retail_data_pipeline` and trigger the DAG manually.
 
 Monitor the task statuses and logs in the Airflow interface.
 
-**Note:** Running the pipeline writes data to AWS S3 and
-Snowflake and may consume cloud resources. The S3 publishing
-process is not fully atomic and would need further hardening
-for production use.
+**Cloud effects:** Triggering this DAG overwrites the raw S3 CSV keys, uploads
+processed Parquet, and then uses `aws s3 sync --delete` to remove stale Parquet
+objects from the two processed dataset prefixes. It replaces both Snowflake
+destination tables' rows in a transaction and builds dbt models. These are live
+writes and can consume paid resources. The S3 publish is not atomic; use an
+isolated development bucket/stage for a separately authorized live test.
+The audit executed none of these cloud operations.
+
+### Local checks without cloud execution
+
+Install test dependencies in a separate test environment or in your Airflow
+development environment (do not combine Airflow and dbt dependencies):
+
+```bash
+.airflow-venv/bin/python -m pip install -r requirements-dev.txt
+.airflow-venv/bin/python -m pytest -v
+.airflow-venv/bin/ruff check --select E9,F63,F7,F82 python dags scripts tests
+AIRFLOW_HOME="$PWD/airflow-audit" AIRFLOW__CORE__UNIT_TEST_MODE=True \
+  .airflow-venv/bin/python scripts/check_dags.py
+DBT_SEND_ANONYMOUS_USAGE_STATS=false .dbt-venv/bin/dbt parse \
+  --project-dir retail_dbt --profiles-dir tests/fixtures/dbt --no-partial-parse
+terraform -chdir=terraform fmt -check
+terraform -chdir=terraform init -backend=false -input=false -lockfile=readonly
+terraform -chdir=terraform validate
+docker compose config --quiet
+```
+
+`pytest` discovers only `tests/`; the Spark/Delta demo scripts under `python/`
+are standalone programs that start services or write outputs. DAG tests skip
+without Airflow; Snowflake loader tests skip without the connector. The full
+audit environment ran all 24 tests. `dbt parse` checks structure and references,
+not SQL execution or actual data tests. Terraform init may download providers;
+these validation commands do not run a plan or apply.
+
+With Docker running, `docker compose run --rm customer-generator` writes only
+local synthetic output. `docker compose up` also starts the producer and sends
+Kafka events, so it is not an offline validation command.
+
+`sql/01_create_tables.sql` bootstraps fresh PostgreSQL tables, including the
+`customer_etl.py` destination. It is not a Snowflake schema setup script.
 
 ## 11. Key Data Engineering Concepts
 

@@ -16,21 +16,27 @@ from airflow.sdk import dag, task
 # ==================================================
 
 PROJECT_ROOT = Path(
-    "/Users/kavitshah/Documents/Python/retail-data-platform"
-)
+    os.environ.get("RETAIL_PROJECT_ROOT", Path(__file__).resolve().parents[1])
+).expanduser().resolve()
 
 # Python environment for data generation and Spark
-PROJECT_PYTHON = PROJECT_ROOT / ".venv/bin/python"
+PROJECT_PYTHON = Path(
+    os.environ.get("RETAIL_PROJECT_PYTHON", PROJECT_ROOT / ".venv/bin/python")
+).expanduser()
 
 # Python environment for Snowflake connector
-AIRFLOW_PYTHON = PROJECT_ROOT / ".airflow-venv/bin/python"
+AIRFLOW_PYTHON = Path(
+    os.environ.get("RETAIL_SNOWFLAKE_PYTHON", PROJECT_ROOT / ".airflow-venv/bin/python")
+).expanduser()
 
 # dbt configuration
-DBT_EXECUTABLE = PROJECT_ROOT / ".dbt-venv/bin/dbt"
+DBT_EXECUTABLE = Path(
+    os.environ.get("RETAIL_DBT_EXECUTABLE", PROJECT_ROOT / ".dbt-venv/bin/dbt")
+).expanduser()
 DBT_PROJECT = PROJECT_ROOT / "retail_dbt"
 
 # S3 configuration
-RETAIL_BUCKET = "retail-data-platform-kavit-2026"
+RETAIL_BUCKET = os.environ.get("RETAIL_BUCKET", "retail-data-platform-kavit-2026")
 
 
 # ==================================================
@@ -103,6 +109,8 @@ def get_s3_objects(prefix):
         2026, 1, 1, tz="UTC"
     ),
     catchup=False,
+    # Tasks share local outputs and replace fixed S3/Snowflake datasets.
+    max_active_runs=1,
     default_args=default_args,
     tags=["retail-data-platform"],
 )

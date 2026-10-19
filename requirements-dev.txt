@@ -1,0 +1,5 @@
+# Offline tests and focused correctness linting; no Spark/cloud execution.
+pytest==9.1.1
+ruff==0.17.1
+Faker==40.39.0
+snowflake-connector-python==5.0.0

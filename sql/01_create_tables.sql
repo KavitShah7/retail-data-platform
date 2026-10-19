@@ -63,3 +63,11 @@ CREATE TABLE payments (
     payment_method VARCHAR(50),
     FOREIGN KEY (order_id) REFERENCES orders(order_id)
 );
+
+-- PostgreSQL destination used by python/customer_etl.py.
+-- This is separate from Snowflake PROCESSED.CUSTOMER_SUMMARY.
+CREATE TABLE customer_summary (
+    customer_id INTEGER PRIMARY KEY REFERENCES customers(customer_id),
+    full_name VARCHAR(101),
+    state VARCHAR(2)
+);

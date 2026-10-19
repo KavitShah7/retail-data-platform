@@ -3,7 +3,6 @@ name: Retail Data Platform CI
 on:
   push:
     branches: [main]
-
   pull_request:
     branches: [main]
 
@@ -13,61 +12,80 @@ permissions:
 jobs:
   python-check:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
+      - name: Install test and lint dependencies
+        run: python -m pip install -r requirements-dev.txt
       - name: Check Python syntax
-        run: python -m compileall -q python
-    
-      - name: Install pytest
-        run: python -m pip install pytest
+        run: python -m compileall -q python dags scripts tests
+      - name: Lint Python correctness
+        run: ruff check --select E9,F63,F7,F82 python dags scripts tests
+      - name: Run offline Python tests
+        run: python -m pytest -v
 
-      - name: Run Python unit tests
-        run: python -m pytest tests/ -v
+  airflow-check:
+    runs-on: ubuntu-latest
+    env:
+      AIRFLOW_HOME: /tmp/retail-airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__UNIT_TEST_MODE: "True"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install Airflow and test dependencies
+        run: python -m pip install -r requirements-airflow.txt -r requirements-dev.txt
+      - name: Import all DAGs without executing tasks
+        run: python scripts/check_dags.py
+      - name: Check DAG graph and mocked task safety
+        run: python -m pytest -v
 
+  dbt-check:
+    runs-on: ubuntu-latest
+    env:
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dbt Snowflake adapter
+        run: python -m pip install -r requirements-dbt.txt
+      - name: Parse dbt with offline credentials (no warehouse connection)
+        run: >-
+          dbt parse --project-dir retail_dbt
+          --profiles-dir tests/fixtures/dbt --no-partial-parse
 
   terraform-check:
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: terraform
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.16.6"
-
       - name: Check Terraform formatting
         run: terraform fmt -check
-
-      - name: Initialize Terraform
-        run: terraform init -backend=false -input=false
-
+      - name: Initialize Terraform without a backend
+        run: terraform init -backend=false -input=false -lockfile=readonly
       - name: Validate Terraform
         run: terraform validate
 
-
   docker-check:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
       - name: Build customer generator image
         run: docker build -t retail-customer-generator .
-
+      - name: Smoke test customer generator in a fresh container
+        run: docker run --rm --network none retail-customer-generator
       - name: Build Kafka producer image
         run: docker build -f Dockerfile.kafka -t retail-kafka-producer .

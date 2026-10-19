@@ -42,3 +42,19 @@ crash.*.log
 
 # Terraform plan files
 *.tfplan
+
+# Credentials and local dbt profiles
+.env
+.env.*
+!.env.example
+*.pem
+*.p8
+*.key
+**/profiles.yml
+!tests/fixtures/dbt/profiles.yml
+
+# Generated logs and test/lint caches (already tracked files need separate review)
+*.log
+.pytest_cache/
+.ruff_cache/
+airflow-audit/

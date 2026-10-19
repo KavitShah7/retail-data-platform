@@ -7,15 +7,18 @@ import snowflake.connector
 # 1. Connect to Snowflake using our existing service account
 def connect_to_snowflake():
     return snowflake.connector.connect(
-        account="XKGTHBR-CT45017",
-        user="RETAIL_DBT_USER",
-        role="RETAIL_DBT_ROLE",
-        warehouse="RETAIL_WH",
+        account=os.environ.get("SNOWFLAKE_ACCOUNT", "XKGTHBR-CT45017"),
+        user=os.environ.get("SNOWFLAKE_USER", "RETAIL_DBT_USER"),
+        role=os.environ.get("SNOWFLAKE_ROLE", "RETAIL_DBT_ROLE"),
+        warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE", "RETAIL_WH"),
         database="RETAIL_DB",
         schema="PROCESSED",
         authenticator="SNOWFLAKE_JWT",
         private_key_file=str(
-            Path.home() / ".dbt/snowflake_dbt_key.p8"
+            Path(os.environ.get(
+                "SNOWFLAKE_PRIVATE_KEY_FILE",
+                Path.home() / ".dbt/snowflake_dbt_key.p8",
+            )).expanduser()
         ),
         private_key_password=os.environ[
             "SNOWFLAKE_KEY_PASSPHRASE"
@@ -61,10 +64,11 @@ def load_dataset(cursor, table, columns, source_folder):
 # 3. Execute the complete loading pipeline
 def main():
     connection = connect_to_snowflake()
-    cursor = connection.cursor()
+    cursor = None
     transaction_started = False
 
     try:
+        cursor = connection.cursor()
         load_dataset(
             cursor,
             "ORDERS",
@@ -122,8 +126,11 @@ def main():
         raise
 
     finally:
-        cursor.close()
-        connection.close()
+        try:
+            if cursor is not None:
+                cursor.close()
+        finally:
+            connection.close()
 
 
 if __name__ == "__main__":

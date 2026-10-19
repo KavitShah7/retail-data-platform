@@ -8,6 +8,7 @@ from confluent_kafka import Producer
 
 
 TOPIC = "retail_orders"
+delivery_errors = []
 
 producer = Producer({
     "bootstrap.servers": os.getenv(
@@ -18,6 +19,7 @@ producer = Producer({
 
 def delivery_report(err, msg):
     if err is not None:
+        delivery_errors.append(err)
         print(f"Delivery failed: {err}")
     else:
         print(
@@ -52,6 +54,12 @@ for order_id in range(1001, 1011):
     time.sleep(2)
 
 
-producer.flush()
+remaining = producer.flush(30)
+
+if remaining or delivery_errors:
+    raise RuntimeError(
+        f"Kafka delivery failed: {len(delivery_errors)} error(s), "
+        f"{remaining} message(s) still queued after 30 seconds."
+    )
 
 print("Finished producing orders.")

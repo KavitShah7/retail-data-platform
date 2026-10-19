@@ -1,0 +1,14 @@
+# Offline parse only. These values cannot authenticate to a live account.
+retail_dbt:
+  target: offline
+  outputs:
+    offline:
+      type: snowflake
+      account: offline
+      user: offline
+      password: "{{ env_var('DBT_PARSE_PASSWORD', 'unused-offline-only') }}"
+      role: RETAIL_DBT_ROLE
+      warehouse: RETAIL_WH
+      database: RETAIL_DB
+      schema: ANALYTICS
+      threads: 1

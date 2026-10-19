@@ -1,4 +1,5 @@
 import csv
+from pathlib import Path
 from faker import Faker
 
 
@@ -21,7 +22,9 @@ for customer_id in range(1,101):
     customer = create_customer(customer_id)
     customers.append(customer)
 
-with open("data/customers.csv", "w", newline="") as file:
+Path("data").mkdir(parents=True, exist_ok=True)
+
+with open("data/customers.csv", "w", newline="", encoding="utf-8") as file:
     fieldnames = [
         "customer_id",
         "first_name",

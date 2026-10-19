@@ -1,12 +1,9 @@
 from datetime import timedelta
-from pathlib import Path
 
 import pendulum
 
-from airflow.sdk import dag, task
+from airflow.sdk import dag, get_current_context, task
 
-
-RETRY_MARKER = Path("/tmp/retail_airflow_retry_test")
 
 
 @dag(
@@ -24,8 +21,7 @@ def retry_test_pipeline():
     )
     def retry_demo():
 
-        if not RETRY_MARKER.exists():
-            RETRY_MARKER.write_text("failed_once")
+        if get_current_context()["ti"].try_number == 1:
 
             print("Intentional first-attempt failure!")
 
@@ -36,7 +32,6 @@ def retry_test_pipeline():
         print("Retry detected.")
         print("Task succeeded on the second attempt!")
 
-        RETRY_MARKER.unlink()
 
     retry_demo()
 
