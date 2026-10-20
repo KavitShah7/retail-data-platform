@@ -60,3 +60,7 @@ crash.*.log
 airflow-audit/
 
 data/*.csv
+
+
+python/test_spark.py
+python/test_delta.py
