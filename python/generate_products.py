@@ -1,44 +1,31 @@
-import csv
 import random
+
 from faker import Faker
 
-fake = Faker()
+from generator_config import NUM_PRODUCTS, seed_random, write_csv
 
-categories = [
-    "Electronics",
-    "Clothing",
-    "Home",
-    "Beauty",
-    "Sports"
-]
+FIELDS = ["product_id", "product_name", "category", "price"]
+CATEGORIES = ["Electronics", "Clothing", "Home", "Beauty", "Sports"]
 
 
-def create_product(product_id):
+def create_product(fake, product_id):
     return {
         "product_id": product_id,
-        "product_name":fake.catch_phrase(),
-        "category": random.choice(categories),
-        "price": round(random.uniform(5.0, 500.0), 2)
+        "product_name": fake.catch_phrase(),
+        "category": random.choice(CATEGORIES),
+        "price": round(random.uniform(5.0, 500.0), 2),
     }
 
 
-products = []
+def main():
+    fake = Faker()
+    seed_random(fake)
 
-for product_id in range(1, 51):
-    product = create_product(product_id)
-    products.append(product)
+    products = [create_product(fake, i) for i in range(1, NUM_PRODUCTS + 1)]
+    write_csv("products.csv", FIELDS, products)
+
+    print(f"Generated {len(products)} products successfully!")
 
 
-with open("data/products.csv", "w", newline="") as file:
-    fieldnames = [
-        "product_id",
-        "product_name",
-        "category",
-        "price"
-    ]
-
-    writer = csv.DictWriter(file, fieldnames=fieldnames)
-    writer.writeheader()
-    writer.writerows(products)
-
-print(f"Generated {len(products)} products successfully!")
+if __name__ == "__main__":
+    main()

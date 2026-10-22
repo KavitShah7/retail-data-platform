@@ -1,61 +1,33 @@
-import csv
 import random
 
+from generator_config import NUM_ORDERS, read_csv, seed_random, write_csv
 
-products = []
-
-with open("data/products.csv", "r") as file:
-    reader = csv.DictReader(file)
-
-    for row in reader:
-        row["product_id"] = int(row["product_id"])
-        row["price"] = float(row["price"])
-        products.append(row)
+FIELDS = ["order_item_id", "order_id", "product_id", "quantity", "unit_price"]
 
 
-order_items = []
-order_item_id = 1
+def main():
+    seed_random()
 
-for order_id in range(1, 1001):
-
-    number_of_items = random.randint(1, 5)
-
-    selected_products = random.sample(
-        products,
-        number_of_items
-    )
-
-    for product in selected_products:
-
-        quantity = random.randint(1, 3)
-
-        order_item = {
-            "order_item_id": order_item_id,
-            "order_id": order_id,
-            "product_id": product["product_id"],
-            "quantity": quantity,
-            "unit_price": product["price"]
-        }
-
-        order_items.append(order_item)
-
-        order_item_id += 1
-
-
-with open("data/order_items.csv", "w", newline="") as file:
-
-    fieldnames = [
-        "order_item_id",
-        "order_id",
-        "product_id",
-        "quantity",
-        "unit_price"
+    products = [
+        {"product_id": int(row["product_id"]), "price": float(row["price"])}
+        for row in read_csv("products.csv")
     ]
 
-    writer = csv.DictWriter(file, fieldnames=fieldnames)
+    order_items = []
+    for order_id in range(1, NUM_ORDERS + 1):
+        for product in random.sample(products, random.randint(1, 5)):
+            order_items.append({
+                "order_item_id": len(order_items) + 1,
+                "order_id": order_id,
+                "product_id": product["product_id"],
+                "quantity": random.randint(1, 3),
+                "unit_price": product["price"],
+            })
 
-    writer.writeheader()
-    writer.writerows(order_items)
+    write_csv("order_items.csv", FIELDS, order_items)
+
+    print(f"Generated {len(order_items)} order items successfully!")
 
 
-print(f"Generated {len(order_items)} order items successfully!")
+if __name__ == "__main__":
+    main()

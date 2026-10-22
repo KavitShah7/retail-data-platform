@@ -11,7 +11,7 @@ output "project_name" {
 }
 
 data "aws_s3_bucket" "existing_retail_bucket" {
-  bucket = "retail-data-platform-kavit-2026"
+  bucket = var.bucket_name
 }
 
 output "existing_bucket_arn" {

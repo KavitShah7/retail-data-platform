@@ -4,10 +4,17 @@ from pathlib import Path
 import snowflake.connector
 
 
+def required_env(name):
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"{name} environment variable is not set.")
+    return value
+
+
 # 1. Connect to Snowflake using our existing service account
 def connect_to_snowflake():
     return snowflake.connector.connect(
-        account=os.environ.get("SNOWFLAKE_ACCOUNT", "XKGTHBR-CT45017"),
+        account=required_env("SNOWFLAKE_ACCOUNT"),
         user=os.environ.get("SNOWFLAKE_USER", "RETAIL_DBT_USER"),
         role=os.environ.get("SNOWFLAKE_ROLE", "RETAIL_DBT_ROLE"),
         warehouse=os.environ.get("SNOWFLAKE_WAREHOUSE", "RETAIL_WH"),
@@ -20,9 +27,7 @@ def connect_to_snowflake():
                 Path.home() / ".dbt/snowflake_dbt_key.p8",
             )).expanduser()
         ),
-        private_key_password=os.environ[
-            "SNOWFLAKE_KEY_PASSPHRASE"
-        ],
+        private_key_password=required_env("SNOWFLAKE_KEY_PASSPHRASE"),
     )
 
 

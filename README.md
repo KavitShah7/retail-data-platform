@@ -294,7 +294,8 @@ worker's environment before it imports the DAG:
 | `RETAIL_PROJECT_PYTHON` | `<root>/.venv/bin/python` |
 | `RETAIL_SNOWFLAKE_PYTHON` | `<root>/.airflow-venv/bin/python` |
 | `RETAIL_DBT_EXECUTABLE` | `<root>/.dbt-venv/bin/dbt` |
-| `RETAIL_BUCKET` | Existing `retail-data-platform-kavit-2026` bucket; select an authorized bucket |
+| `RETAIL_BUCKET` | Required by the S3 tasks (no default); name of an existing, authorized bucket |
+| `RETAIL_SEED` | Optional; any integer makes the data generators produce the same data every run |
 | `DBT_PROFILES_DIR` | dbt's usual profile search location; use a private directory |
 
 Use absolute executable paths for overrides. `aws` must be on each worker's
@@ -310,8 +311,8 @@ Before running the pipeline:
 2. Ensure the Snowflake service account has the required grants.
 3. Make the encrypted Snowflake private-key passphrase available
    securely to the Airflow process as `SNOWFLAKE_KEY_PASSPHRASE`.
-4. The loader defaults to the existing service account configuration. You can
-   override `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`,
+4. Set `SNOWFLAKE_ACCOUNT` (required, no default). You can also
+   override `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`,
    `SNOWFLAKE_WAREHOUSE`, and `SNOWFLAKE_PRIVATE_KEY_FILE` (default
    `~/.dbt/snowflake_dbt_key.p8`). The loader and source models still target
    `RETAIL_DB.PROCESSED`; a bucket override does not repoint the Snowflake stage.
@@ -380,8 +381,8 @@ docker compose config --quiet
 
 `pytest` discovers only `tests/`; the Spark/Delta demo scripts under `python/`
 are standalone programs that start services or write outputs. DAG tests skip
-without Airflow; Snowflake loader tests skip without the connector. The full
-audit environment ran all 24 tests. `dbt parse` checks structure and references,
+without Airflow; Snowflake loader tests skip without the connector. Spark transform
+tests skip without PySpark. `dbt parse` checks structure and references,
 not SQL execution or actual data tests. Terraform init may download providers;
 these validation commands do not run a plan or apply.
 

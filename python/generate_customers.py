@@ -1,12 +1,11 @@
-import csv
-from pathlib import Path
 from faker import Faker
 
+from generator_config import NUM_CUSTOMERS, seed_random, write_csv
 
-fake = Faker()
+FIELDS = ["customer_id", "first_name", "last_name", "email", "city", "state"]
 
 
-def create_customer(customer_id):
+def create_customer(fake, customer_id):
     return {
         "customer_id": customer_id,
         "first_name": fake.first_name(),
@@ -16,26 +15,16 @@ def create_customer(customer_id):
         "state": fake.state_abbr(),
     }
 
-customers=[]
 
-for customer_id in range(1,101):
-    customer = create_customer(customer_id)
-    customers.append(customer)
+def main():
+    fake = Faker()
+    seed_random(fake)
 
-Path("data").mkdir(parents=True, exist_ok=True)
+    customers = [create_customer(fake, i) for i in range(1, NUM_CUSTOMERS + 1)]
+    write_csv("customers.csv", FIELDS, customers)
 
-with open("data/customers.csv", "w", newline="", encoding="utf-8") as file:
-    fieldnames = [
-        "customer_id",
-        "first_name",
-        "last_name",
-        "email",
-        "city",
-        "state"
-    ]
+    print(f"Generated {len(customers)} customers successfully!")
 
-    writer = csv.DictWriter(file, fieldnames=fieldnames)
-    writer.writeheader()
-    writer.writerows(customers)
 
-print(f"Generated {len(customers)} customers successfully!")
+if __name__ == "__main__":
+    main()

@@ -1,8 +1,6 @@
-import psycopg
+from db_connection import get_connection
 
-connection = psycopg.connect(
-    dbname="retail_db"
-)
+connection = get_connection()
 
 cursor = connection.cursor()
 
