@@ -19,6 +19,7 @@ def pipeline(monkeypatch):
     spec = importlib.util.spec_from_file_location("pipeline_under_test", ROOT / "dags/retail_pipeline_dag.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    monkeypatch.setattr(module, "RETAIL_BUCKET", "test-bucket")
     return module
 
 
@@ -78,3 +79,12 @@ def test_retry_demo_uses_airflow_attempt_number(monkeypatch):
         callback()
     monkeypatch.setattr(module, "get_current_context", lambda: {"ti": SimpleNamespace(try_number=2)})
     callback()
+
+
+def test_s3_tasks_fail_clearly_without_bucket(pipeline, monkeypatch):
+    monkeypatch.setattr(pipeline, "RETAIL_BUCKET", "")
+    run = Mock()
+    monkeypatch.setattr(pipeline.subprocess, "run", run)
+    with pytest.raises(RuntimeError, match="RETAIL_BUCKET"):
+        task_callable(pipeline, "validate_raw_data")()
+    run.assert_not_called()

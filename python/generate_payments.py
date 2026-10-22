@@ -1,58 +1,34 @@
-import csv
 import random
 
+from generator_config import read_csv, seed_random, write_csv
 
-order_totals = {}
+FIELDS = ["payment_id", "order_id", "payment_amount", "payment_method"]
+PAYMENT_METHODS = ["credit_card", "debit_card", "paypal", "apple_pay"]
 
-with open("data/order_items.csv", "r") as file:
-    reader = csv.DictReader(file)
 
-    for row in reader:
+def main():
+    seed_random()
+
+    # One payment per order, for the full order total.
+    order_totals = {}
+    for row in read_csv("order_items.csv"):
         order_id = int(row["order_id"])
-        quantity = int(row["quantity"])
-        unit_price = float(row["unit_price"])
+        item_total = int(row["quantity"]) * float(row["unit_price"])
+        order_totals[order_id] = order_totals.get(order_id, 0) + item_total
 
-        item_total = quantity * unit_price
-
-        if order_id not in order_totals:
-            order_totals[order_id] = 0
-
-        order_totals[order_id] += item_total
-
-
-payments = []
-
-payment_methods = [
-    "credit_card",
-    "debit_card",
-    "paypal",
-    "apple_pay"
-]
-
-
-for order_id, order_total in order_totals.items():
-
-    payment = {
-        "payment_id": order_id,
-        "order_id": order_id,
-        "payment_amount": round(order_total, 2),
-        "payment_method": random.choice(payment_methods)
-    }
-
-    payments.append(payment)
-
-
-with open("data/payments.csv", "w", newline="") as file:
-    fieldnames = [
-        "payment_id",
-        "order_id",
-        "payment_amount",
-        "payment_method"
+    payments = [
+        {
+            "payment_id": order_id,
+            "order_id": order_id,
+            "payment_amount": round(total, 2),
+            "payment_method": random.choice(PAYMENT_METHODS),
+        }
+        for order_id, total in order_totals.items()
     ]
+    write_csv("payments.csv", FIELDS, payments)
 
-    writer = csv.DictWriter(file, fieldnames=fieldnames)
-    writer.writeheader()
-    writer.writerows(payments)
+    print(f"Generated {len(payments)} payments successfully!")
 
 
-print(f"Generated {len(payments)} payments successfully!")
+if __name__ == "__main__":
+    main()

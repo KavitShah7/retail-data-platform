@@ -4,5 +4,7 @@ SELECT
     last_name,
     email,
     city,
-    state
+    state,
+    order_count,
+    total_revenue
 FROM {{ ref('stg_customers') }}

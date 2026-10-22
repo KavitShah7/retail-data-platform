@@ -1,47 +1,36 @@
-import csv
 import random
 from datetime import datetime, timedelta
 
+from generator_config import (
+    NUM_CUSTOMERS,
+    NUM_ORDERS,
+    ORDER_STATUSES,
+    seed_random,
+    write_csv,
+)
 
-def create_order(order_id):
-    customer_id = random.randint(1, 100)
+FIELDS = ["order_id", "customer_id", "order_date", "status"]
 
-    days_ago = random.randint(0, 365)
-    order_date = datetime.now() - timedelta(days=days_ago)
 
-    statuses = [
-        "pending",
-        "shipped",
-        "delivered",
-        "cancelled"
-    ]
-
+def create_order(order_id, today):
+    order_date = today - timedelta(days=random.randint(0, 365))
     return {
         "order_id": order_id,
-        "customer_id": customer_id,
+        "customer_id": random.randint(1, NUM_CUSTOMERS),
         "order_date": order_date.strftime("%Y-%m-%d"),
-        "status": random.choice(statuses)
+        "status": random.choice(ORDER_STATUSES),
     }
 
 
-orders = []
+def main():
+    seed_random()
 
-for order_id in range(1, 1001):
-    order = create_order(order_id)
-    orders.append(order)
+    today = datetime.now()
+    orders = [create_order(i, today) for i in range(1, NUM_ORDERS + 1)]
+    write_csv("orders.csv", FIELDS, orders)
 
-
-with open("data/orders.csv", "w", newline="") as file:
-    fieldnames = [
-        "order_id",
-        "customer_id",
-        "order_date",
-        "status"
-    ]
-
-    writer = csv.DictWriter(file, fieldnames=fieldnames)
-    writer.writeheader()
-    writer.writerows(orders)
+    print(f"Generated {len(orders)} orders successfully!")
 
 
-print(f"Generated {len(orders)} orders successfully!")
+if __name__ == "__main__":
+    main()
