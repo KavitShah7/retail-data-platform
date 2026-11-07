@@ -8,5 +8,13 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"
+  region = var.aws_region
+
+  # Applied to every AWS resource this config creates.
+  default_tags {
+    tags = {
+      Project   = var.project_name
+      ManagedBy = "terraform"
+    }
+  }
 }

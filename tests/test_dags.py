@@ -88,3 +88,11 @@ def test_s3_tasks_fail_clearly_without_bucket(pipeline, monkeypatch):
     with pytest.raises(RuntimeError, match="RETAIL_BUCKET"):
         task_callable(pipeline, "validate_raw_data")()
     run.assert_not_called()
+
+
+def test_pipeline_tasks_have_timeouts_and_retries():
+    dag = DagBag(dag_folder=ROOT / "dags").dags["retail_data_pipeline"]
+    assert dag.dagrun_timeout is not None
+    for task in dag.tasks:
+        assert task.execution_timeout is not None, task.task_id
+        assert task.retries >= 1, task.task_id

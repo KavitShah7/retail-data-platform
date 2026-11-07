@@ -1,7 +1,11 @@
+"""Load processed Parquet from the S3 stage into Snowflake, replacing both tables atomically."""
+import logging
 import os
 from pathlib import Path
 
 import snowflake.connector
+
+log = logging.getLogger("load_snowflake")
 
 
 def required_env(name):
@@ -28,6 +32,10 @@ def connect_to_snowflake():
             )).expanduser()
         ),
         private_key_password=required_env("SNOWFLAKE_KEY_PASSPHRASE"),
+        login_timeout=60,
+        network_timeout=600,
+        # Makes this job's queries easy to find in Snowflake query history.
+        session_parameters={"QUERY_TAG": "retail_data_platform:load_snowflake"},
     )
 
 
@@ -61,13 +69,15 @@ def load_dataset(cursor, table, columns, source_folder):
     if rows_loaded == 0 or any(
         row[1] != "LOADED" for row in results
     ):
-        raise RuntimeError(f"Loading failed for {table}")
+        raise RuntimeError(f"Loading failed for {table}: {results}")
 
-    print(f"{table}: {rows_loaded} rows loaded into temporary table")
+    log.info("%s: %d rows loaded into temporary table", table, rows_loaded)
+    return rows_loaded
 
 
 # 3. Execute the complete loading pipeline
 def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     connection = connect_to_snowflake()
     cursor = None
     transaction_started = False
@@ -123,11 +133,15 @@ def main():
         cursor.execute("COMMIT")
         transaction_started = False
 
-        print("Snowflake loading completed successfully!")
+        log.info("Snowflake loading completed successfully.")
 
     except Exception:
         if transaction_started:
-            cursor.execute("ROLLBACK")
+            try:
+                cursor.execute("ROLLBACK")
+            except Exception:
+                # Keep the original error; Snowflake also rolls back on disconnect.
+                log.exception("ROLLBACK failed")
         raise
 
     finally:

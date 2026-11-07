@@ -1,39 +1,23 @@
-from pyspark.sql import SparkSession
+"""Print what the Delta streaming job has written so far."""
+import os
+
 from delta import configure_spark_with_delta_pip
 
-
-builder = (
-    SparkSession.builder
-    .appName("VerifyDeltaStream")
-    .master("local[*]")
-    .config(
-        "spark.sql.extensions",
-        "io.delta.sql.DeltaSparkSessionExtension"
-    )
-    .config(
-        "spark.sql.catalog.spark_catalog",
-        "org.apache.spark.sql.delta.catalog.DeltaCatalog"
-    )
-)
-
-spark = configure_spark_with_delta_pip(builder).getOrCreate()
-
-spark.sparkContext.setLogLevel("WARN")
+from streaming_common import delta_builder
 
 
-df = (
-    spark.read
-    .format("delta")
-    .load("delta/streaming_orders")
-)
+def main():
+    path = os.environ.get("RETAIL_DELTA_PATH", "delta/streaming_orders")
+    spark = configure_spark_with_delta_pip(delta_builder("VerifyDeltaStream")).getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
+    try:
+        df = spark.read.format("delta").load(path)
+        print("\nDELTA STREAMING DATA")
+        df.show(20, truncate=False)
+        print(f"\nTOTAL ROW COUNT: {df.count()}")
+    finally:
+        spark.stop()
 
 
-print("\nDELTA STREAMING DATA")
-df.show(20, truncate=False)
-
-
-print("\nTOTAL ROW COUNT")
-print(df.count())
-
-
-spark.stop()
+if __name__ == "__main__":
+    main()

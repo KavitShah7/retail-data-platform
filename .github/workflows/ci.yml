@@ -9,25 +9,51 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch/PR cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   python-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Install test and lint dependencies
         run: python -m pip install -r requirements-dev.txt
       - name: Check Python syntax
         run: python -m compileall -q python dags scripts tests
-      - name: Lint Python correctness
-        run: ruff check --select E9,F63,F7,F82 python dags scripts tests
+      - name: Lint Python (rules in pyproject.toml)
+        run: ruff check python dags scripts tests
       - name: Run offline Python tests
         run: python -m pytest -v
 
+  spark-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Spark and test dependencies
+        run: python -m pip install -r requirements.txt pytest==9.1.1
+      - name: Run Spark transform and generator tests on local Spark
+        run: python -m pytest -v tests/test_spark_transforms.py tests/test_generators.py
+
   airflow-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       AIRFLOW_HOME: /tmp/retail-airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
@@ -46,6 +72,7 @@ jobs:
 
   dbt-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
     steps:
@@ -62,6 +89,7 @@ jobs:
 
   terraform-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: terraform
@@ -79,6 +107,7 @@ jobs:
 
   docker-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Validate Compose configuration

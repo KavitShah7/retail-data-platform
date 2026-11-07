@@ -8,9 +8,11 @@ pytest.importorskip("pyspark")
 from pyspark.sql import SparkSession
 
 from python.retail_spark_pipeline import (
+    DataQualityError,
     build_customer_summary,
     build_order_totals,
     build_processed_orders,
+    check_quality,
 )
 
 
@@ -91,6 +93,33 @@ def test_customer_summary_counts_orders_and_revenue(data):
     assert summary[1]["total_revenue"] == 24.5
     assert summary[2]["order_count"] == 2
     assert summary[2]["total_revenue"] == 100.0  # missing totals are ignored
-    # A customer with no orders is still listed.
-    assert summary[3]["order_count"] is None
-    assert summary[3]["total_revenue"] is None
+    # A customer with no orders is still listed, with zero (not null) metrics.
+    assert summary[3]["order_count"] == 0
+    assert summary[3]["total_revenue"] == 0.0
+
+
+def test_order_total_is_rounded_to_cents(spark):
+    items = spark.createDataFrame([(1, 3, 0.1)], ["order_id", "quantity", "unit_price"])
+    assert build_order_totals(items).first()["order_total"] == 0.3
+
+
+def test_quality_check_passes_on_clean_data(data):
+    customers, orders, order_items, payments = data
+    processed = build_processed_orders(orders, order_items, payments)
+    check_quality(orders, processed, build_customer_summary(customers, processed))
+
+
+def test_quality_check_catches_duplicate_payment_fan_out(spark, data):
+    customers, orders, order_items, payments = data
+    duplicated = payments.union(spark.createDataFrame([(10, 20.0, "paypal")], payments.schema))
+    processed = build_processed_orders(orders, order_items, duplicated)
+    with pytest.raises(DataQualityError, match="expected 4"):
+        check_quality(orders, processed, build_customer_summary(customers, processed))
+
+
+def test_quality_check_rejects_empty_input(spark, data):
+    customers, orders, order_items, payments = data
+    empty = orders.limit(0)
+    processed = build_processed_orders(empty, order_items, payments)
+    with pytest.raises(DataQualityError, match="empty"):
+        check_quality(empty, processed, build_customer_summary(customers, processed))

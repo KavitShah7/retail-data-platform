@@ -73,3 +73,19 @@ def test_failed_cursor_close_still_closes_connection(database):
     with pytest.raises(RuntimeError, match="close failed"):
         loader.main()
     connection.close.assert_called_once()
+
+
+def test_failed_rollback_keeps_original_error(database):
+    connection, cursor = database
+
+    def execute(sql):
+        normalized = " ".join(sql.split())
+        if normalized.startswith("INSERT INTO ORDERS"):
+            raise RuntimeError("original insert failure")
+        if normalized == "ROLLBACK":
+            raise RuntimeError("rollback failure")
+
+    cursor.execute.side_effect = execute
+    with pytest.raises(RuntimeError, match="original insert failure"):
+        loader.main()
+    connection.close.assert_called_once()

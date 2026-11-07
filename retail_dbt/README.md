@@ -2,7 +2,8 @@
 
 This project reads `RETAIL_DB.PROCESSED.ORDERS` and
 `RETAIL_DB.PROCESSED.CUSTOMER_SUMMARY`, creates two staging views and the
-`dim_customer` / `fact_orders` marts, and declares nine data tests.
+`dim_customer` / `fact_orders` marts, and declares sixteen data tests
+(four on the raw sources, twelve on the marts).
 
 Use the separate `.dbt-venv` with `requirements-dbt.txt`. For a real deployment,
 copy `profiles.example.yml` to `profiles.yml` in a private directory and set
