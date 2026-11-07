@@ -1,12 +1,20 @@
-"""Shared connection to the local PostgreSQL database."""
+"""Shared connection to the PostgreSQL database.
+
+Connection settings come from libpq's standard variables (PGHOST, PGPORT,
+PGUSER, PGPASSWORD, ...). RETAIL_PG_DBNAME overrides the database name.
+"""
 import os
 
 import psycopg
 
 
 def get_connection():
-    """Connect to the local Postgres database (override name with RETAIL_PG_DBNAME)."""
-    return psycopg.connect(dbname=os.environ.get("RETAIL_PG_DBNAME", "retail_db"))
+    """Connect to Postgres; fail after 10 seconds instead of hanging."""
+    return psycopg.connect(
+        dbname=os.environ.get("RETAIL_PG_DBNAME", "retail_db"),
+        connect_timeout=int(os.environ.get("RETAIL_PG_CONNECT_TIMEOUT", "10")),
+        application_name="retail-data-platform",
+    )
 
 
 if __name__ == "__main__":

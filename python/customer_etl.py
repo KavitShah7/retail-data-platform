@@ -1,59 +1,38 @@
+"""Postgres ETL: customers -> customer_summary (full name + state), upserted."""
+import logging
+
 from db_connection import get_connection
 
-connection = get_connection()
+log = logging.getLogger("customer_etl")
 
-cursor = connection.cursor()
+SELECT_SQL = "SELECT customer_id, first_name, last_name, state FROM customers"
 
-cursor.execute("""
-    SELECT
-        customer_id,
-        first_name,
-        last_name,
-        state
-    FROM customers;
-""")
-
-customers = cursor.fetchall()
-
-transformed_customers = []
-
-for customer in customers:
-    customer_id = customer[0]
-    first_name = customer[1]
-    last_name = customer[2]
-    state = customer[3]
-
-    full_name = f"{first_name} {last_name}"
-
-    transformed_customer = (
-        customer_id,
-        full_name,
-        state
-    )
-
-    transformed_customers.append(transformed_customer)
-
-for customer in transformed_customers:
-    cursor.execute(
-    """
-    INSERT INTO customer_summary (
-        customer_id,
-        full_name,
-        state
-    )
+UPSERT_SQL = """
+    INSERT INTO customer_summary (customer_id, full_name, state)
     VALUES (%s, %s, %s)
-    ON CONFLICT (customer_id)
-    DO UPDATE SET
+    ON CONFLICT (customer_id) DO UPDATE SET
         full_name = EXCLUDED.full_name,
-        state = EXCLUDED.state;
-    """,
-    customer
-)
+        state = EXCLUDED.state
+"""
 
 
-connection.commit()
+def transform(rows):
+    """(id, first, last, state) -> (id, full_name, state); tolerates missing name parts."""
+    return [
+        (customer_id, " ".join(part for part in (first, last) if part), state)
+        for customer_id, first, last, state in rows
+    ]
 
-print(f"Loaded {len(transformed_customers)} customers successfully!")
 
-cursor.close()
-connection.close()
+def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    # `with connection` commits on success and rolls back on any exception.
+    with get_connection() as connection, connection.cursor() as cursor:
+        cursor.execute(SELECT_SQL)
+        summaries = transform(cursor.fetchall())
+        cursor.executemany(UPSERT_SQL, summaries)
+    log.info("Loaded %d customers.", len(summaries))
+
+
+if __name__ == "__main__":
+    main()

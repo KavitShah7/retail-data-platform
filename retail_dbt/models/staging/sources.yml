@@ -2,12 +2,25 @@ version: 2
 
 sources:
   - name: processed
+    description: Spark output loaded by python/load_snowflake.py.
     database: RETAIL_DB
     schema: PROCESSED
 
     tables:
       - name: orders
         identifier: ORDERS
+        description: One row per order, with its computed total.
+        columns:
+          - name: order_id
+            data_tests:
+              - not_null
+              - unique
 
       - name: customer_summary
         identifier: CUSTOMER_SUMMARY
+        description: One row per customer, with order count and revenue.
+        columns:
+          - name: customer_id
+            data_tests:
+              - not_null
+              - unique

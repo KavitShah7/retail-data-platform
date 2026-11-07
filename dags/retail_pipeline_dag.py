@@ -1,14 +1,19 @@
+"""
+### Retail data pipeline
+
+Generate data -> raw CSV to S3 -> Spark -> Parquet to S3 -> validate ->
+load Snowflake -> dbt run -> dbt test.
+
+Triggered manually. Writes to live S3 and Snowflake; see README "Cloud effects".
+"""
 import json
 import os
 import subprocess
-
 from datetime import timedelta
 from pathlib import Path
 
 import pendulum
-
 from airflow.sdk import dag, task
-
 
 # ==================================================
 # 1. PROJECT CONFIGURATION
@@ -129,7 +134,18 @@ def run_dbt(command):
     catchup=False,
     # Tasks share local outputs and replace fixed S3/Snowflake datasets.
     max_active_runs=1,
-    default_args={"retries": 2, "retry_delay": timedelta(minutes=1)},
+    # Fail a stuck run instead of letting it hold the single run slot forever.
+    dagrun_timeout=timedelta(hours=3),
+    default_args={
+        "owner": "data-platform",
+        "retries": 2,
+        "retry_delay": timedelta(minutes=1),
+        "retry_exponential_backoff": True,
+        "max_retry_delay": timedelta(minutes=10),
+        # A hung subprocess (Spark, dbt, aws) is killed and retried.
+        "execution_timeout": timedelta(minutes=45),
+    },
+    doc_md=__doc__,
     tags=["retail-data-platform"],
 )
 def retail_pipeline():

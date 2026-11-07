@@ -1,46 +1,37 @@
+"""Upload the generated raw CSVs to s3://$RETAIL_BUCKET/raw/."""
+import logging
 import os
-from pathlib import Path
 
 import boto3
 
+from generator_config import DATA_DIR
 
-bucket_name = os.environ.get("RETAIL_BUCKET")
+log = logging.getLogger("upload_to_s3")
 
-if not bucket_name:
-    raise ValueError(
-        "RETAIL_BUCKET environment variable is not set."
-    )
+DATASETS = ["customers", "products", "orders", "order_items", "payments"]
 
-s3 = boto3.client("s3")
 
-files = {
-    "data/customers.csv": "raw/customers/customers.csv",
-    "data/products.csv": "raw/products/products.csv",
-    "data/orders.csv": "raw/orders/orders.csv",
-    "data/order_items.csv": "raw/order_items/order_items.csv",
-    "data/payments.csv": "raw/payments/payments.csv",
-}
+def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-for local_file, s3_key in files.items():
+    bucket_name = os.environ.get("RETAIL_BUCKET")
+    if not bucket_name:
+        raise ValueError("RETAIL_BUCKET environment variable is not set.")
 
-    file_path = Path(local_file)
+    files = {DATA_DIR / f"{name}.csv": f"raw/{name}/{name}.csv" for name in DATASETS}
 
-    if not file_path.exists():
-        raise FileNotFoundError(
-            f"File does not exist: {local_file}"
-        )
+    # Check every file first so a missing one never leaves S3 half-updated.
+    missing = [str(path) for path in files if not path.is_file() or path.stat().st_size == 0]
+    if missing:
+        raise FileNotFoundError(f"Missing or empty input files: {missing}")
 
-    print(f"Uploading {local_file}...")
+    s3 = boto3.client("s3")
+    for local_path, s3_key in files.items():
+        s3.upload_file(str(local_path), bucket_name, s3_key)
+        log.info("Uploaded %s -> s3://%s/%s", local_path, bucket_name, s3_key)
 
-    s3.upload_file(
-        local_file,
-        bucket_name,
-        s3_key
-    )
+    log.info("All %d files uploaded.", len(files))
 
-    print(
-        f"Uploaded successfully -> "
-        f"s3://{bucket_name}/{s3_key}"
-    )
 
-print("All files uploaded successfully!")
+if __name__ == "__main__":
+    main()

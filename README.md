@@ -80,6 +80,12 @@ PySpark processes the retail datasets and creates:
 - Processed orders
 - Customer summary
 
+The job reads CSVs with explicit schemas and stops on any malformed row
+(`FAILFAST`). Before writing, it runs quality checks: inputs are not empty,
+every order appears exactly once (catches duplicate payments multiplying
+rows in the join), and keys are not null. If a check fails, nothing is written.
+Customers with no orders get `order_count = 0` and `total_revenue = 0.0`.
+
 The transformed datasets are written in Parquet format.
 
 ### Step 4: Upload Processed Data to S3
@@ -145,7 +151,9 @@ The pipeline runs the following tasks:
 8. Execute dbt tests
 9. Mark the pipeline complete
 
-The DAG includes task dependencies, retries, and failure handling.
+The DAG includes task dependencies, retries with exponential backoff,
+a 45-minute timeout per task (so a hung Spark/dbt/aws process is killed and
+retried), and a 3-hour timeout for the whole run.
 
 **Validation status (2026-10-19):** Local DAG imports, mocked task/loader tests,
 offline dbt parsing, Terraform validation, and a local synthetic Spark batch
@@ -163,6 +171,15 @@ A Python Kafka producer generates retail order events.
 A Dockerized producer can publish events to the Kafka topic:
 
 `retail_orders`
+
+The producer uses `acks=all` with idempotence enabled, so client retries
+cannot duplicate events. Settings come from the environment:
+`KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_TOPIC`, `KAFKA_NUM_EVENTS`,
+`KAFKA_START_ORDER_ID`, and `KAFKA_EVENT_INTERVAL_SECONDS`.
+
+The Spark streaming jobs (`kafka_spark_stream.py`, `kafka_spark_to_parquet.py`,
+`kafka_spark_to_delta.py`) share `python/streaming_common.py`, read the same
+Kafka settings, and drop messages that are not valid order JSON.
 
 ### Databricks and Delta Lake
 
@@ -213,7 +230,8 @@ GitHub Actions automatically performs checks for repository changes.
 
 The CI workflow includes:
 
-- Python syntax checks, focused Ruff correctness linting, and offline unit tests
+- Python syntax checks, Ruff linting (rules in `pyproject.toml`), and offline unit tests
+- Spark transform and data-quality tests on a local Spark with Java 17
 - Airflow DAG imports, dependency graph checks, and mocked task failure checks
 - Offline dbt parsing with a nonfunctional test profile
 - Terraform formatting, backend-free initialization, and validation
@@ -296,6 +314,9 @@ worker's environment before it imports the DAG:
 | `RETAIL_DBT_EXECUTABLE` | `<root>/.dbt-venv/bin/dbt` |
 | `RETAIL_BUCKET` | Required by the S3 tasks (no default); name of an existing, authorized bucket |
 | `RETAIL_SEED` | Optional; any integer makes the data generators produce the same data every run |
+| `RETAIL_DATA_DIR` | Optional; CSV folder for generators, S3 upload, and Spark (default `data`) |
+| `RETAIL_PROCESSED_DIR` | Optional; Spark Parquet output folder (default `processed`); the DAG's S3 sync still reads `<root>/processed` |
+| `RETAIL_NUM_CUSTOMERS` / `RETAIL_NUM_PRODUCTS` / `RETAIL_NUM_ORDERS` | Optional; generator sizes (defaults 100 / 50 / 1000) |
 | `DBT_PROFILES_DIR` | dbt's usual profile search location; use a private directory |
 
 Use absolute executable paths for overrides. `aws` must be on each worker's
@@ -368,7 +389,8 @@ development environment (do not combine Airflow and dbt dependencies):
 ```bash
 .airflow-venv/bin/python -m pip install -r requirements-dev.txt
 .airflow-venv/bin/python -m pytest -v
-.airflow-venv/bin/ruff check --select E9,F63,F7,F82 python dags scripts tests
+.airflow-venv/bin/ruff check python dags scripts tests
+.venv/bin/python -m pytest -v tests/test_spark_transforms.py tests/test_generators.py
 AIRFLOW_HOME="$PWD/airflow-audit" AIRFLOW__CORE__UNIT_TEST_MODE=True \
   .airflow-venv/bin/python scripts/check_dags.py
 DBT_SEND_ANONYMOUS_USAGE_STATS=false .dbt-venv/bin/dbt parse \

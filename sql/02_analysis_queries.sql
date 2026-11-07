@@ -85,7 +85,7 @@ GROUP BY customer_id
 ORDER BY order_count DESC
 LIMIT 10;
 
---8. Customers with more than 10 orders
+-- 8. Customers with more than 10 orders
 
 SELECT
     customer_id,
@@ -95,7 +95,7 @@ GROUP BY customer_id
 HAVING COUNT(*) > 10
 ORDER BY order_count DESC;
 
---9. Customers with more than 3 delivered orders
+-- 9. Customers with more than 3 delivered orders
 
 SELECT
     customer_id,
@@ -144,7 +144,7 @@ SELECT
 FROM order_totals;
 
 
---12. Count orders by category
+-- 12. Count orders by category
 WITH order_totals AS (
     SELECT
         order_id,
@@ -171,7 +171,7 @@ SELECT
 FROM categorized_orders
 GROUP BY order_category;
 
---13. Find the most recent order for each customer
+-- 13. Find the most recent order for each customer
 WITH ranked_orders AS (
     SELECT
         customer_id,
@@ -192,7 +192,7 @@ FROM ranked_orders
 WHERE order_number = 1;
 
 
---14.
+-- 14. Rank customers by number of orders
 WITH customer_orders AS (
     SELECT
         customer_id,
@@ -208,5 +208,3 @@ SELECT
         ORDER BY order_count DESC
     ) AS customer_rank
 FROM customer_orders;
-
---15.

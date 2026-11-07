@@ -1,0 +1,14 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+# Scripts in python/ import each other as top-level modules.
+src = ["python", "."]
+
+[tool.ruff.lint]
+# pycodestyle errors, pyflakes, import order, bugbear, pyupgrade
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["python", "generator_config", "db_connection", "streaming_common"]
+# The repo has a delta/ output folder; the delta-spark package is still third-party.
+known-third-party = ["delta"]

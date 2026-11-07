@@ -8,3 +8,9 @@ variable "bucket_name" {
   description = "Existing S3 bucket used by the pipeline (set in an untracked .tfvars file or TF_VAR_bucket_name)"
   type        = string
 }
+
+variable "aws_region" {
+  description = "AWS region for the provider"
+  type        = string
+  default     = "us-east-1"
+}

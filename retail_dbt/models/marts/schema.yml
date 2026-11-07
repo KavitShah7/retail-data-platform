@@ -2,8 +2,10 @@ version: 2
 
 models:
   - name: dim_customer
+    description: One row per customer, including customers with no orders.
     columns:
       - name: customer_id
+        description: Primary key.
         data_tests:
           - not_null
           - unique
@@ -12,9 +14,21 @@ models:
         data_tests:
           - not_null
 
+      - name: order_count
+        description: Distinct orders placed; 0 when the customer has none.
+        data_tests:
+          - not_null
+
+      - name: total_revenue
+        description: Sum of order totals; 0 when the customer has none.
+        data_tests:
+          - not_null
+
   - name: fact_orders
+    description: One row per order.
     columns:
       - name: order_id
+        description: Primary key.
         data_tests:
           - not_null
           - unique
@@ -27,6 +41,10 @@ models:
                 to: ref('dim_customer')
                 field: customer_id
 
+      - name: order_date
+        data_tests:
+          - not_null
+
       - name: status
         data_tests:
           - accepted_values:
@@ -38,5 +56,6 @@ models:
                   - cancelled
 
       - name: order_total
+        description: Sum of quantity * unit_price, rounded to cents.
         data_tests:
           - not_null
